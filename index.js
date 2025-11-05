@@ -571,6 +571,19 @@ async function ejecutarSincronizacionAirBeam() {
   }
 }
 
+// Configurar puerto para Render
+const PORT = process.env.PORT || 3001;
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.json({ status: 'Backend funcionando', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+  console.log(`[INFO] Servidor escuchando en puerto ${PORT}`);
+});
+
 // Ejecutar ambos procesos en paralelo
 Promise.all([
   ejecutarSincronizacionFirebase(),
