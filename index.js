@@ -2,6 +2,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import express from 'express';
 import { createClient } from "@supabase/supabase-js";
 import { initializeApp } from "firebase/app";
 import {
@@ -39,6 +40,18 @@ const supabaseAirBeam = createClient(SUPABASE_AIRBEAM_URL, SUPABASE_AIRBEAM_KEY,
   db: { schema: 'api' }  // El proyecto AirBeam3 requiere esquema api
 });
 // Nota: Este proyecto fuerza el uso del esquema api
+
+// ===== SERVIDOR EXPRESS (INMEDIATO) =====
+const PORT = process.env.PORT || 3001;
+const app = express();
+
+app.get('/', (req, res) => {
+  res.json({ status: 'Backend funcionando', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+  console.log(`[INFO] Servidor escuchando en puerto ${PORT}`);
+});
 
 // --- Función de timeout para operaciones de Supabase ---
 function withTimeout(promise, timeoutMs = 30000) {
@@ -570,19 +583,6 @@ async function ejecutarSincronizacionAirBeam() {
     await new Promise(resolve => setTimeout(resolve, INTERVALO_AIRBEAM));
   }
 }
-
-// Configurar puerto para Render
-import express from 'express';
-const PORT = process.env.PORT || 3001;
-const app = express();
-
-app.get('/', (req, res) => {
-  res.json({ status: 'Backend funcionando', timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, () => {
-  console.log(`[INFO] Servidor escuchando en puerto ${PORT}`);
-});
 
 // Ejecutar ambos procesos en paralelo
 Promise.all([
