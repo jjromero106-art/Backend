@@ -5,6 +5,34 @@ dotenv.config();
 import express from 'express';
 import { createClient } from "@supabase/supabase-js";
 import { initializeApp } from "firebase/app";
+
+// ===== SERVIDOR EXPRESS (PRIMERA PRIORIDAD) =====
+const PORT = process.env.PORT || 3001;
+const app = express();
+
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'Backend funcionando correctamente', 
+    timestamp: new Date().toISOString(),
+    port: PORT 
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', port: PORT });
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[INFO] ✅ Servidor Express iniciado en puerto ${PORT}`);
+  console.log(`[INFO] ✅ Servidor disponible en todas las interfaces (0.0.0.0:${PORT})`);
+});
+
+// Manejar errores del servidor
+server.on('error', (err) => {
+  console.error(`[ERROR] ❌ Error del servidor:`, err);
+});
+
+console.log(`[INFO] 🚀 Intentando abrir puerto ${PORT}...`);
 import {
   getDatabase,
   ref,
@@ -41,17 +69,7 @@ const supabaseAirBeam = createClient(SUPABASE_AIRBEAM_URL, SUPABASE_AIRBEAM_KEY,
 });
 // Nota: Este proyecto fuerza el uso del esquema api
 
-// ===== SERVIDOR EXPRESS (INMEDIATO) =====
-const PORT = process.env.PORT || 3001;
-const app = express();
 
-app.get('/', (req, res) => {
-  res.json({ status: 'Backend funcionando', timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, () => {
-  console.log(`[INFO] Servidor escuchando en puerto ${PORT}`);
-});
 
 // --- Función de timeout para operaciones de Supabase ---
 function withTimeout(promise, timeoutMs = 30000) {
