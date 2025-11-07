@@ -34,7 +34,7 @@ API_STREAMS = "https://aircasting.org/api/fixed/sessions/{session_id}/streams.js
 API_MEASUREMENTS = "https://aircasting.org/api/v3/fixed_measurements"
 
 # ===== CONFIGURACIÓN DE DESCARGA POR LOTES =====
-TAMANO_LOTE_HORAS = 24  # Descargar datos en lotes de X horas
+TAMANO_LOTE_HORAS = 12  # Descargar datos en lotes de X horas (igual que index.js)
 MAX_MEASUREMENTS_PER_REQUEST = 10000  # Límite por petición
 
 # ===== SESIÓN PERSISTENTE =====
@@ -204,6 +204,134 @@ def descargar_datos(sensor_id, session_data, streams_info, lote_horas=24):
         print(f"    [INFO] Coordenadas de sesión: {session_lat}, {session_lon}")
     except:
         session_lat = session_lon = ""
+    
+    # Convertir end_datetime a timestamp
+    if isinstance(end_datetime, str):
+        end_dt = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+        final_end = int(end_dt.timestamp() * 1000)
+    else:
+        final_end = end_datetime
+    
+    # Procesar un lote
+    lote_ms = lote_horas * 60 * 60 * 1000
+    if current_start < final_end:
+        current_end = min(current_start + lote_ms, final_end)
+        print(f"  [LOTE] {datetime.fromtimestamp(current_start/1000).strftime('%Y-%m-%d %H:%M')} - {datetime.fromtimestamp(current_end/1000).strftime('%Y-%m-%d %H:%M')}")
+        
+        mediciones_por_tiempo = {}
+        datos_encontrados = False
+        
+        for i, stream in enumerate(streams_info):
+            stream_id = stream.get('stream_id')
+            sensor_name = stream.get('sensor_name')
+            
+            if not stream_id:
+                continue
+            
+            try:
+                params = {'stream_id': stream_id, 'start_time': current_start, 'end_time': current_end}
+                r = session.get(API_MEASUREMENTS, params=params)
+                r.raise_for_status()
+                measurements = r.json()
+                
+                if isinstance(measurements, list) and measurements:
+                    print(f"    [{sensor_name}] {len(measurements)} mediciones")
+                    datos_encontrados = True
+                    
+                    for m in measurements:
+                        timestamp_ms = m.get('time')
+                        value = m.get('value')
+                        if timestamp_ms and value is not None:
+                            ts = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc)
+                            ts_str = ts.strftime("%Y-%m-%dT%H:%M:%S.000")
+                            
+                            if ts_str not in mediciones_por_tiempo:
+                                mediciones_por_tiempo[ts_str] = {"lat": session_lat, "lon": session_lon, "values": {}}
+                            
+                            mediciones_por_tiempo[ts_str]["values"][i+1] = value
+                
+                time.sleep(0.3)
+                
+            except Exception as e:
+                print(f"    [ERROR] {sensor_name}: {e}")
+        
+        # Si no se encontraron datos pero hay más tiempo disponible, avanzar al siguiente lote
+        if not datos_encontrados and current_end < final_end:
+            print(f"    [INFO] Sin datos en este período, avanzando al siguiente lote")
+            _estado_descarga[sensor_id] = current_end
+            return True
+        
+        # Escribir datos inmediatamente por lote
+        if mediciones_por_tiempo:
+            datos_lote = []
+            
+            for ts_str, datos in sorted(mediciones_por_tiempo.items()):
+                if datos["values"]:
+                    fila_datos = {
+                        'timestamp': ts_str,
+                        'title': title,
+                        'lat': datos["lat"],
+                        'lon': datos["lon"],
+                        'values': datos["values"]
+                    }
+                    datos_lote.append(fila_datos)
+            
+            # Escribir inmediatamente este lote al CSV
+            if datos_lote:
+                _escribir_lote_inmediato(sensor_id, ruta_archivo, streams_info, datos_lote)
+                print(f"    [ESCRITO] {len(datos_lote)} registros guardados inmediatamente")
+        
+        # Actualizar estado y verificar si hay más datos
+        _estado_descarga[sensor_id] = current_end
+        hay_mas = current_end < final_end
+        
+        # Limpiar estado al completar
+        if not hay_mas:
+            if sensor_id in _estado_descarga:
+                del _estado_descarga[sensor_id]
+            print(f"    [COMPLETADO] {sensor_id} - Todos los datos procesados")
+        
+        return hay_mas
+    
+    return False
+
+def _escribir_lote_inmediato(sensor_id, ruta_archivo, streams_info, datos_lote):
+    """
+    Escribe un lote de datos inmediatamente al CSV
+    """
+    if not datos_lote:
+        return
+    
+    # Leer timestamps existentes para evitar duplicados
+    mediciones_existentes = set()
+    if os.path.exists(ruta_archivo):
+        with open(ruta_archivo, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            for i, row in enumerate(reader):
+                if i > 8 and len(row) > 2:
+                    timestamp = row[2]
+                    if timestamp and timestamp != "Timestamp":
+                        mediciones_existentes.add(timestamp)
+    
+    # Filtrar solo datos nuevos
+    datos_nuevos = [d for d in datos_lote if d['timestamp'] not in mediciones_existentes]
+    
+    if datos_nuevos:
+        obj_id = len(mediciones_existentes) + 1
+        
+        with open(ruta_archivo, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            
+            for datos in datos_nuevos:
+                fila = [obj_id, datos['title'], datos['timestamp'], datos['lat'], datos['lon']]
+                for j in range(1, len(streams_info) + 1):
+                    fila.append(datos['values'].get(j, ""))
+                writer.writerow(fila)
+                obj_id += 1
+        
+        print(f"    [LOTE GUARDADO] {len(datos_nuevos)} filas nuevas escritas al CSV")
+    else:
+        print(f"    [LOTE SKIP] Todos los datos ya existen en el CSV")
     
     # Convertir end_datetime a timestamp
     if isinstance(end_datetime, str):
