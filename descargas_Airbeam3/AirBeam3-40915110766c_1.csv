@@ -1,0 +1,9 @@
+,,,,,Sensor_Package_Name,Sensor_Package_Name,Sensor_Package_Name,Sensor_Package_Name,Sensor_Package_Name
+,,,,,AirBeam3-40915110766c,AirBeam3-40915110766c,AirBeam3-40915110766c,AirBeam3-40915110766c,AirBeam3-40915110766c
+,,,,,Sensor_Name,Sensor_Name,Sensor_Name,Sensor_Name,Sensor_Name
+,,,,,AirBeam3-PM1,AirBeam3-F,AirBeam3-PM2.5,AirBeam3-PM10,AirBeam3-RH
+,,,,,Measurement_Type,Measurement_Type,Measurement_Type,Measurement_Type,Measurement_Type
+,,,,,Particulate Matter,Temperature,Particulate Matter,Particulate Matter,Humidity
+,,,,,Measurement_Units,Measurement_Units,Measurement_Units,Measurement_Units,Measurement_Units
+,,,,,µg/m³,F,µg/m³,µg/m³,%
+ObjectID,Session_Name,Timestamp,Latitude,Longitude,1:Measurement_Value,2:Measurement_Value,3:Measurement_Value,4:Measurement_Value,5:Measurement_Value

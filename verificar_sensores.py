@@ -129,7 +129,6 @@ def verificar_usuario_session(session_id):
 
 # Variables globales para mantener el estado de descarga por sensor
 _estado_descarga = {}
-_datos_acumulados = {}  # Acumular datos en memoria por sensor
 
 def descargar_datos(sensor_id, session_data, streams_info, lote_horas=24):
     """
@@ -262,10 +261,9 @@ def descargar_datos(sensor_id, session_data, streams_info, lote_horas=24):
             _estado_descarga[sensor_id] = current_end  # Guardar nueva posición
             return True  # Continuar buscando
         
-        # Acumular datos en memoria en lugar de escribir inmediatamente
+        # Escribir datos inmediatamente por lote
         if mediciones_por_tiempo:
-            if sensor_id not in _datos_acumulados:
-                _datos_acumulados[sensor_id] = []
+            datos_lote = []
             
             for ts_str, datos in sorted(mediciones_por_tiempo.items()):
                 if datos["values"]:
@@ -276,22 +274,22 @@ def descargar_datos(sensor_id, session_data, streams_info, lote_horas=24):
                         'lon': datos["lon"],
                         'values': datos["values"]
                     }
-                    _datos_acumulados[sensor_id].append(fila_datos)
+                    datos_lote.append(fila_datos)
             
-            print(f"    [ACUMULADO] {len(mediciones_por_tiempo)} registros en memoria")
+            # Escribir inmediatamente este lote al CSV
+            if datos_lote:
+                _escribir_lote_inmediato(sensor_id, ruta_archivo, streams_info, datos_lote)
+                print(f"    [ESCRITO] {len(datos_lote)} registros guardados inmediatamente")
         
         # Actualizar estado y verificar si hay más datos
         _estado_descarga[sensor_id] = current_end
         hay_mas = current_end < final_end
         
-        # Si no hay más datos, escribir todo al CSV
+        # Limpiar estado al completar
         if not hay_mas:
-            _escribir_datos_acumulados(sensor_id, ruta_archivo, streams_info)
-            # Limpiar estado al completar
             if sensor_id in _estado_descarga:
                 del _estado_descarga[sensor_id]
-            if sensor_id in _datos_acumulados:
-                del _datos_acumulados[sensor_id]
+            print(f"    [COMPLETADO] {sensor_id} - Todos los datos procesados")
         
         return hay_mas
     
@@ -344,14 +342,14 @@ def obtener_ultimo_timestamp_csv(ruta_archivo):
     
     return ultimo_timestamp
 
-def _escribir_datos_acumulados(sensor_id, ruta_archivo, streams_info):
+def _escribir_lote_inmediato(sensor_id, ruta_archivo, streams_info, datos_lote):
     """
-    Escribe todos los datos acumulados al CSV de una sola vez
+    Escribe un lote de datos inmediatamente al CSV
     """
-    if sensor_id not in _datos_acumulados or not _datos_acumulados[sensor_id]:
+    if not datos_lote:
         return
     
-    # Leer timestamps existentes
+    # Leer timestamps existentes para evitar duplicados
     mediciones_existentes = set()
     if os.path.exists(ruta_archivo):
         with open(ruta_archivo, "r", encoding="utf-8") as f:
@@ -362,8 +360,8 @@ def _escribir_datos_acumulados(sensor_id, ruta_archivo, streams_info):
                     if timestamp and timestamp != "Timestamp":
                         mediciones_existentes.add(timestamp)
     
-    # Filtrar datos nuevos y escribir
-    datos_nuevos = [d for d in _datos_acumulados[sensor_id] if d['timestamp'] not in mediciones_existentes]
+    # Filtrar solo datos nuevos
+    datos_nuevos = [d for d in datos_lote if d['timestamp'] not in mediciones_existentes]
     
     if datos_nuevos:
         obj_id = len(mediciones_existentes) + 1
@@ -378,9 +376,9 @@ def _escribir_datos_acumulados(sensor_id, ruta_archivo, streams_info):
                 writer.writerow(fila)
                 obj_id += 1
         
-        print(f"    [GUARDADO] {len(datos_nuevos)} filas escritas al CSV")
+        print(f"    [LOTE GUARDADO] {len(datos_nuevos)} filas nuevas escritas al CSV")
     else:
-        print(f"    [INFO] No hay datos nuevos para escribir")
+        print(f"    [LOTE SKIP] Todos los datos ya existen en el CSV")
 
 def generar_csv_con_stream_ids(sensor_package_name, session_data, streams_info):
     """
